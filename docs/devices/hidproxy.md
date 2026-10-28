@@ -35,7 +35,9 @@ Frames both ways: kind (1 byte), interface number (1 byte), payload length (uint
 - Input isn't repeated: when no new report came within `bInterval`, the host gets none (the device implements
   `usb.NoInRepeatDevice`). When the host doesn't poll fast enough, the oldest of 64 queued reports goes.
 - Control requests VIIPER answers itself: standard requests, a HID interface's idle rate and protocol
-  (`SET_IDLE`, `GET_IDLE`, `SET_PROTOCOL`, `GET_PROTOCOL`), a CDC interface's line coding and control line state.
-  Every other request (HID `GET_REPORT`/`SET_REPORT`, vendor and unknown class requests) goes to the client, which
-  answers within 1 s; no client within that time, or a refusal, answers with an empty data stage.
+  (`SET_IDLE`, `GET_IDLE`, `SET_PROTOCOL`, `GET_PROTOCOL`), a CDC interface's line coding and control line state
+  (`SET_LINE_CODING`, `GET_LINE_CODING`, `SET_CONTROL_LINE_STATE`). Every other request (HID `GET_REPORT`/`SET_REPORT`,
+  other CDC requests such as `SEND_BREAK`, vendor and unknown class requests) goes to the client, which answers within
+  1 s. VIIPER's server can't stall a request: no client within that time, or a refusal, answers with an empty,
+  successful data stage.
 - One client at a time; another stream to the same device is refused until the first one ends.

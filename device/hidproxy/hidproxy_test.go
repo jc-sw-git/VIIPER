@@ -237,6 +237,27 @@ func TestVendorAndUnknownRequestsGoToTheClient(t *testing.T) {
 	}
 }
 
+func TestOtherCdcRequestsGoToTheClient(t *testing.T) {
+	p, err := New(puckOptions(t))
+	require.NoError(t, err)
+	client, _ := attach(t, p)
+
+	// SEND_BREAK (0x23) and an encapsulated command (0x00) to the CDC interfaces: not line housekeeping, so the
+	// client decides (Arcadia counts them as a possible firmware update).
+	for _, setup := range [][2]uint8{{0x23, 0}, {0x00, 1}} {
+		got := make(chan Frame, 1)
+		go func() { got <- answer(t, client, 0, nil) }()
+		_, handled := p.HandleControl(0x21, setup[0], 0xFFFF, uint16(setup[1]), 0, nil)
+		assert.True(t, handled)
+		select {
+		case f := <-got:
+			assert.Equal(t, setup[0], f.Payload[3], "bRequest 0x%02X", setup[0])
+		case <-time.After(2 * time.Second):
+			t.Fatalf("bRequest 0x%02X never reached the client", setup[0])
+		}
+	}
+}
+
 func TestHidAndCdcHousekeepingNeverReachesTheClient(t *testing.T) {
 	p, err := New(puckOptions(t))
 	require.NoError(t, err)

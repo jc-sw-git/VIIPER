@@ -154,9 +154,10 @@ func (p *HIDProxy) HandleTransfer(ctx context.Context, ep uint32, dir uint32, ou
 }
 
 // HandleControl answers the class and vendor requests VIIPER's server doesn't. A HID interface's idle rate and
-// protocol and a CDC interface's line settings are the host's own business with the copy and are answered here;
-// every other request (HID GET_REPORT and SET_REPORT, vendor and unknown class requests) goes to the client, which
-// decides whether anything reaches the real device.
+// protocol and a CDC interface's line coding and control line state are the host's own business with the copy and
+// are answered here; every other request (HID GET_REPORT and SET_REPORT, other CDC requests such as SEND_BREAK,
+// vendor and unknown class requests) goes to the client, which decides whether anything reaches the real device and
+// may take it as a sign of a firmware update.
 func (p *HIDProxy) HandleControl(bmRequestType, bRequest uint8, wValue, wIndex, wLength uint16, data []byte) ([]byte, bool) {
 	if bmRequestType&requestTypeMask == 0 {
 		// Standard requests (descriptors, configuration, features) stay VIIPER's.
@@ -170,7 +171,9 @@ func (p *HIDProxy) HandleControl(bmRequestType, bRequest uint8, wValue, wIndex, 
 				return nil, false
 			}
 		case classCDC, classCDCData:
-			return p.lineControl(iface, bRequest, data), true
+			if bRequest == cdcSetLineCoding || bRequest == cdcGetLineCoding || bRequest == cdcSetControlLineState {
+				return p.lineControl(iface, bRequest, data), true
+			}
 		}
 	}
 	return p.askClient(bmRequestType, bRequest, wValue, wIndex, wLength, data), true
