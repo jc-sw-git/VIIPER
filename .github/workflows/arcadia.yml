@@ -1,0 +1,100 @@
+# Arcadia's build of VIIPER (https://github.com/jc-sw-git/Arcadia): tests, then viiper.exe for Windows x64.
+# "Run workflow" with "publish" on a branch makes a release arcadia-<commit> with viiper.exe and its SHA-256,
+# which Arcadia pins and ships.
+name: Arcadia build
+
+on:
+    push:
+        branches: [arcadia]
+    pull_request:
+        branches: [arcadia]
+    workflow_dispatch:
+        inputs:
+            publish:
+                description: "Publish viiper.exe as release arcadia-<commit>"
+                type: boolean
+                default: false
+
+permissions:
+    contents: read
+
+jobs:
+    build:
+        name: Test and build viiper.exe
+        runs-on: ubuntu-latest
+        outputs:
+            tag: ${{ steps.version.outputs.tag }}
+        steps:
+            - uses: actions/checkout@v6
+              with:
+                  fetch-depth: 0
+
+            - uses: actions/setup-go@v6
+              with:
+                  go-version-file: go.mod
+                  cache: true
+
+            - uses: extractions/setup-just@v4
+
+            - name: Version
+              id: version
+              run: |
+                  short=$(git rev-parse --short=12 HEAD)
+                  echo "version=$(git describe --tags --match 'v[0-9]*.[0-9]*.[0-9]*' --always)-arcadia" >> "$GITHUB_OUTPUT"
+                  echo "tag=arcadia-$short" >> "$GITHUB_OUTPUT"
+
+            - name: Licenses
+              run: just licenses
+
+            - name: Vet
+              run: go vet ./...
+
+            - name: Test
+              run: go test -count=1 ./...
+
+            - name: Build
+              env:
+                  GOOS: windows
+                  GOARCH: amd64
+                  CGO_ENABLED: 0
+                  BUILD_TYPE: Release
+                  OUTPUT_NAME: viiper.exe
+                  VERSION: ${{ steps.version.outputs.version }}
+              run: |
+                  just build Release
+                  cd dist
+                  sha256sum viiper.exe > viiper.exe.sha256
+                  cp ../internal/install/bundle/licenses.txt licenses.txt
+                  cat viiper.exe.sha256
+
+            - uses: actions/upload-artifact@v7
+              with:
+                  name: viiper-windows-amd64
+                  path: |
+                      dist/viiper.exe
+                      dist/viiper.exe.sha256
+                      dist/licenses.txt
+                  if-no-files-found: error
+
+    publish:
+        name: Publish release
+        needs: build
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        steps:
+            - uses: actions/download-artifact@v8
+              with:
+                  name: viiper-windows-amd64
+                  path: dist
+
+            - name: Release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ needs.build.outputs.tag }}
+              run: |
+                  gh release create "$TAG" dist/viiper.exe dist/viiper.exe.sha256 dist/licenses.txt \
+                      --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+                      --title "$TAG" \
+                      --notes "VIIPER for Arcadia, built from $GITHUB_SHA. SHA-256: $(cut -d' ' -f1 dist/viiper.exe.sha256)"
