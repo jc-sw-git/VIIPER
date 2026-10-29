@@ -24,6 +24,10 @@ var (
 	procSetupDiDestroyDeviceInfoList     = setupapi.NewProc("SetupDiDestroyDeviceInfoList")
 )
 
+// localUsbipHost is where usbip-win2 reaches this server. A literal IPv4 loopback, not "localhost": that resolves to
+// [::1] too, where another process of the user could listen on the same port number while the server binds 127.0.0.1.
+const localUsbipHost = "127.0.0.1"
+
 const (
 	DigcfPresent         = 0x00000002
 	DigcfDeviceInterface = 0x00000010
@@ -163,7 +167,7 @@ func attachViaIOCTL(_ context.Context, deviceExportMeta *usbip.ExportMeta, usbip
 		return fmt.Errorf("argumentValidation: service string too long: %s", service)
 	}
 	copy(loc.Service[:], service)
-	copy(loc.Host[:], "localhost")
+	copy(loc.Host[:], localUsbipHost)
 
 	devicePathUTF16, err := windows.UTF16PtrFromString(devicePath)
 	if err != nil {
@@ -227,7 +231,7 @@ func attachViaCommand(ctx context.Context, deviceExportMeta *usbip.ExportMeta, u
 		"--tcp-port",
 		strconv.FormatUint(uint64(usbipServerPort), 10),
 		"attach",
-		"-r", "localhost",
+		"-r", localUsbipHost,
 		"-b", fmt.Sprintf("%d-%d", deviceExportMeta.BusID, deviceExportMeta.DevID),
 	)
 	output, err := cmd.CombinedOutput()
